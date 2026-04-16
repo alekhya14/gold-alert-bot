@@ -42,7 +42,7 @@ jobs:
           GOOGLE_SHEETS_CREDS: ${{ secrets.GOOGLE_SHEETS_CREDS }}
           GOOGLE_SHEET_NAME:   ${{ secrets.GOOGLE_SHEET_NAME }}
           TRUEDATA_LOGIN:       ${{secrets.TRUEDATA_LOGIN}}
-          TRUEDATA_PASSWORD:    ${{TRUEDATA_PASSWORD}}
+          TRUEDATA_PASSWORD:    ${{secrets.TRUEDATA_PASSWORD}}
           
         run: python main.py
 
