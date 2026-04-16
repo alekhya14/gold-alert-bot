@@ -3,7 +3,6 @@ from config import validate_config
 from skills.news_fetcher import fetch_all_headlines
 from skills.price_fetcher import (
     fetch_mcx_gold_price,
-    fetch_pivot_levels,
     fetch_technical_indicators,
     fetch_positional_indicators,
 )
@@ -130,13 +129,13 @@ def run():
         return
 
     print("\n[ Fetching price + indicators... ]")
-    gold_price, inr_per_oz = fetch_mcx_gold_price()
+    gold_price = fetch_mcx_gold_price()
 
     # Intraday data (15min candles + VWAP)
-    intraday   = fetch_technical_indicators(inr_per_oz)
+    intraday   = fetch_technical_indicators()
 
     # Positional data (daily candles + pivot levels)
-    positional = fetch_positional_indicators(inr_per_oz)
+    positional = fetch_positional_indicators()
 
     # ── Skill 1: News classifier (shared by both) ─────────────────
     print("\n[ Skill 1 — News Classifier ]")
