@@ -1,26 +1,14 @@
 import os
 
-import requests
-import yfinance as yf
 from config import METALS_DEV_KEY
 import pandas as pd
-from config import MCX_CORRECTION
-from truedata import TD_live, TD_hist
-import time
+
 from kiteconnect import KiteConnect
 import os
 import requests
 from config import MCX_CORRECTION, KITE_TRADING_SYMBOL, KITE_INSTRUMENT_TOKEN
 
 KITE_GOLD_SYMBOL = KITE_TRADING_SYMBOL
-
-# truedata_log = os.getenv("TRUEDATA_LOGIN")
-# truedata_pass = os.getenv("TRUEDATA_PASSWORD")
-#
-# td = TD_live(truedata_log, truedata_pass,live_port=8086)
-# td_hist = TD_hist(truedata_log, truedata_pass)
-
-
 
 def fetch_mcx_gold_price() -> float:
     try:
