@@ -12,11 +12,12 @@ KITE_GOLD_SYMBOL = KITE_TRADING_SYMBOL
 
 def fetch_mcx_gold_price() -> float:
     try:
-        kite       = KiteConnect(api_key=os.getenv("KITE_API_KEY"))
+        kite = KiteConnect(api_key=os.getenv("KITE_API_KEY"))
         kite.set_access_token(os.getenv("KITE_ACCESS_TOKEN"))
 
-        quote = kite.quote([KITE_GOLD_SYMBOL])
-        ltp = float(quote[KITE_GOLD_SYMBOL]["last_price"])
+        quote = kite.quote([KITE_TRADING_SYMBOL])
+        # quote=kite.quote(["MCX:GOLDM26MAYFUT"])
+        ltp = float(quote[KITE_TRADING_SYMBOL]["last_price"])
 
         if ltp == 0:
             raise ValueError("LTP is 0 — market closed")
