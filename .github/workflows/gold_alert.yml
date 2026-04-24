@@ -51,6 +51,9 @@ jobs:
           GOOGLE_SHEET_NAME:   ${{ secrets.GOOGLE_SHEET_NAME }}
           TRUEDATA_LOGIN:       ${{secrets.TRUEDATA_LOGIN}}
           TRUEDATA_PASSWORD:    ${{secrets.TRUEDATA_PASSWORD}}
+          KITE_API_KEY:         ${{secrets.KITE_API_KEY}}
+          KITE_API_SECRET:      ${{secrets.KITE_API_SECRET}}
+          KITE_ACCESS_TOKEN:    ${{secrets.KITE_ACCESS_TOKEN}}
           
         run: python main.py
 
