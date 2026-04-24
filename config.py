@@ -10,6 +10,8 @@ GMAIL_USER      = os.getenv("GMAIL_USER")
 GMAIL_APP_PASS  = os.getenv("GMAIL_APP_PASS")
 ALERT_EMAIL     = os.getenv("ALERT_EMAIL")
 MCX_CORRECTION = 1.0522
+KITE_INSTRUMENT_TOKEN='124881671'
+KITE_TRADING_SYMBOL='GOLDM26MAYFUT'
 
 # Validate all keys are present on startup
 def validate_config():

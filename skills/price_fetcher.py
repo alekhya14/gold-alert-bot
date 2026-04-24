@@ -7,28 +7,45 @@ import pandas as pd
 from config import MCX_CORRECTION
 from truedata import TD_live, TD_hist
 import time
+from kiteconnect import KiteConnect
+import os
+import requests
+from config import MCX_CORRECTION, KITE_TRADING_SYMBOL, KITE_INSTRUMENT_TOKEN
 
-truedata_log = os.getenv("TRUEDATA_LOGIN")
-truedata_pass = os.getenv("TRUEDATA_PASSWORD")
+KITE_GOLD_SYMBOL = KITE_TRADING_SYMBOL
 
-td = TD_live(truedata_log, truedata_pass,live_port=8086)
-td_hist = TD_hist(truedata_log, truedata_pass)
+# truedata_log = os.getenv("TRUEDATA_LOGIN")
+# truedata_pass = os.getenv("TRUEDATA_PASSWORD")
+#
+# td = TD_live(truedata_log, truedata_pass,live_port=8086)
+# td_hist = TD_hist(truedata_log, truedata_pass)
 
 
 
-def fetch_mcx_gold_price() -> str:
+def fetch_mcx_gold_price() -> float:
     try:
-        req_ids = td.start_live_data(["GOLD-I"])
+        kite       = KiteConnect(api_key=os.getenv("KITE_API_KEY"))
+        kite.set_access_token(os.getenv("KITE_ACCESS_TOKEN"))
 
-        time.sleep(2)
+        quote = kite.quote([KITE_GOLD_SYMBOL])
+        ltp = float(quote[KITE_GOLD_SYMBOL]["last_price"])
 
-        # Tick comes in via td.live_data dict
-        # Poll it or attach a callback depending on your TD version
-        inr_per_10g = td.live_data["GOLD-I"].ltp
+        if ltp == 0:
+            raise ValueError("LTP is 0 — market closed")
+
+        print(f"  MCX Gold   : ₹{ltp:,.0f} (Kite Connect)")
+        return ltp
+
+    except Exception as e:
+        print(f"  Kite failed ({e}) — using gold-api fallback")
+        response    = requests.get(
+            "https://api.gold-api.com/price/XAU/INR", timeout=10
+        )
+        data        = response.json()
+        inr_per_oz  = float(data["price"])
+        inr_per_10g = round((inr_per_oz / 31.1035) * 10 * MCX_CORRECTION, -1)
+        print(f"  MCX Gold   : ₹{inr_per_10g:,.0f} (gold-api fallback)")
         return inr_per_10g
-    except:
-        return "₹134,000 (fallback)"
-
 
 # def fetch_mcx_gold_price() -> tuple[str, float]:
 #     """
@@ -65,185 +82,76 @@ def fetch_mcx_gold_price() -> str:
 #
 
 
-# def fetch_positional_indicators(inr_per_oz: float) -> dict | None:
-#     """
-#     Fetch daily candles for positional trading signals.
-#     Uses slower indicators suited for 1-3 day holds.
-#     """
-#     ticker = yf.Ticker("GC=F")
-#     hist   = ticker.history(period="6mo", interval="1d")
-#
-#     if hist.empty or len(hist) < 50:
-#         return None
-#
-#     close  = hist["Close"]
-#     high   = hist["High"]
-#     low    = hist["Low"]
-#
-#     # ── RSI(14) on daily ─────────────────────────────────────────
-#     delta    = close.diff()
-#     avg_gain = delta.clip(lower=0).rolling(14).mean()
-#     avg_loss = (-delta.clip(upper=0)).rolling(14).mean()
-#     rsi      = 100 - (100 / (1 + avg_gain / avg_loss))
-#
-#     # ── EMA 20 / 50 (positional uses slower EMAs) ────────────────
-#     ema20 = close.ewm(span=20, adjust=False).mean()
-#     ema50 = close.ewm(span=50, adjust=False).mean()
-#
-#     ema_cross = "none"
-#     for i in range(-3, 0):
-#         if ema20.iloc[i-1] < ema50.iloc[i-1] and ema20.iloc[i] > ema50.iloc[i]:
-#             ema_cross = "bullish_crossover"
-#             break
-#         elif ema20.iloc[i-1] > ema50.iloc[i-1] and ema20.iloc[i] < ema50.iloc[i]:
-#             ema_cross = "bearish_crossover"
-#             break
-#
-#     # ── MACD (12, 26, 9) on daily ────────────────────────────────
-#     macd_line   = close.ewm(span=12, adjust=False).mean() - \
-#                   close.ewm(span=26, adjust=False).mean()
-#     signal_line = macd_line.ewm(span=9, adjust=False).mean()
-#     macd_signal = "bullish" if macd_line.iloc[-1] > signal_line.iloc[-1] else "bearish"
-#
-#     macd_cross = "none"
-#     if macd_line.iloc[-2] < signal_line.iloc[-2] and \
-#        macd_line.iloc[-1] > signal_line.iloc[-1]:
-#         macd_cross = "bullish_crossover"
-#     elif macd_line.iloc[-2] > signal_line.iloc[-2] and \
-#          macd_line.iloc[-1] < signal_line.iloc[-1]:
-#         macd_cross = "bearish_crossover"
-#
-#     # ── ADX — trend strength ──────────────────────────────────────
-#     # ADX > 25 = trending, < 20 = ranging
-#     tr    = pd.concat([
-#         high - low,
-#         (high - close.shift()).abs(),
-#         (low  - close.shift()).abs()
-#     ], axis=1).max(axis=1)
-#
-#     dm_plus  = high.diff().clip(lower=0)
-#     dm_minus = (-low.diff()).clip(lower=0)
-#
-#     atr      = tr.rolling(14).mean()
-#     di_plus  = (dm_plus.rolling(14).mean()  / atr) * 100
-#     di_minus = (dm_minus.rolling(14).mean() / atr) * 100
-#     dx       = ((di_plus - di_minus).abs() / (di_plus + di_minus)) * 100
-#     adx      = dx.rolling(14).mean()
-#
-#     # ── Daily pivot levels ────────────────────────────────────────
-#     prev      = hist.iloc[-2]
-#     p_high    = prev["High"]
-#     p_low     = prev["Low"]
-#     p_close   = prev["Close"]
-#
-#     pivot = (p_high + p_low + p_close) / 3
-#     r1    = (2 * pivot) - p_low
-#     r2    = pivot + (p_high - p_low)
-#     r3    = p_high + 2 * (pivot - p_low)
-#     s1    = (2 * pivot) - p_high
-#     s2    = pivot - (p_high - p_low)
-#     s3    = p_low - 2 * (p_high - pivot)
-#
-#     # ── 200 EMA trend filter ──────────────────────────────────────
-#     ema200    = close.ewm(span=200, adjust=False).mean()
-#     uptrend   = close.iloc[-1] > ema200.iloc[-1]
-#
-#     # ── Convert to INR per 10g ────────────────────────────────────
-#     latest_usd     = close.iloc[-1]
-#     # usd_to_inr_10g = (inr_per_oz / latest_usd) / 31.1035 * 10
-#     # MCX_CORRECTION = 1.0522
-#     usd_to_inr_10g = (inr_per_oz / latest_usd) / 31.1035 * 10 * MCX_CORRECTION
-#     def to_inr(usd_val):
-#         return round(usd_val * usd_to_inr_10g, -1)
-#
-#     indicators = {
-#         "rsi"         : round(rsi.iloc[-1], 1),
-#         "ema20"       : to_inr(ema20.iloc[-1]),
-#         "ema50"       : to_inr(ema50.iloc[-1]),
-#         "ema200"      : to_inr(ema200.iloc[-1]),
-#         "ema_cross"   : ema_cross,
-#         "macd_signal" : macd_signal,
-#         "macd_cross"  : macd_cross,
-#         "adx"         : round(adx.iloc[-1], 1),
-#         "uptrend"     : uptrend,
-#         "pivot"       : to_inr(pivot),
-#         "r1"          : to_inr(r1),
-#         "r2"          : to_inr(r2),
-#         "r3"          : to_inr(r3),
-#         "s1"          : to_inr(s1),
-#         "s2"          : to_inr(s2),
-#         "s3"          : to_inr(s3),
-#         "prev_high"   : to_inr(p_high),
-#         "prev_low"    : to_inr(p_low),
-#         "prev_close"  : to_inr(p_close),
-#     }
-#
-#     print(f"  [Positional]")
-#     print(f"  RSI(14)    : {indicators['rsi']}")
-#     print(f"  EMA20/50   : ₹{indicators['ema20']:,.0f} / ₹{indicators['ema50']:,.0f}")
-#     print(f"  ADX        : {indicators['adx']} "
-#           f"({'trending' if indicators['adx'] > 25 else 'ranging'})")
-#     print(f"  MACD       : {indicators['macd_signal']} ({indicators['macd_cross']})")
-#     print(f"  200 EMA    : ₹{indicators['ema200']:,.0f} "
-#           f"({'uptrend' if uptrend else 'downtrend'})")
-#     print(f"  Pivot      : ₹{indicators['pivot']:,.0f}")
-#     print(f"  R1/R2      : ₹{indicators['r1']:,.0f} / ₹{indicators['r2']:,.0f}")
-#     print(f"  S1/S2      : ₹{indicators['s1']:,.0f} / ₹{indicators['s2']:,.0f}")
-#
-#     return indicators
 
 def fetch_positional_indicators() -> dict | None:
     """
-    Fetch daily candles from TrueData (MCX GOLD-I) for positional trading signals.
-    Uses slower indicators suited for 1-3 day holds.
-    No USD→INR conversion needed — TrueData returns MCX prices directly in INR.
+    Fetch daily candles from Kite Connect (MCX GOLD26JUNFUT) for positional signals.
+    Returns MCX prices directly in INR — no conversion needed.
     """
-
     try:
-        hist = td_hist.get_historic_data(
-            "GOLD-I",
-            bar_size   = "1day",
-            start_time = (pd.Timestamp.now() - pd.Timedelta(days=365))  # 1yr for EMA200
+        kite  = KiteConnect(api_key=os.getenv("KITE_API_KEY"))
+        kite.set_access_token(os.getenv("KITE_ACCESS_TOKEN"))
+
+        # Fetch 1 year of daily candles for EMA200
+        from_date = (pd.Timestamp.now() - pd.Timedelta(days=365)).strftime("%Y-%m-%d %H:%M:%S")
+        to_date   = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        records = kite.historical_data(
+            instrument_token = KITE_INSTRUMENT_TOKEN,   # GOLD26JUNFUT token
+            from_date        = from_date,
+            to_date          = to_date,
+            interval         = "day"
         )
 
-        if hist is None or hist.empty or len(hist) < 50:
+        if not records:
+            print("  Kite positional: no data returned")
             return None
 
+        hist = pd.DataFrame(records)
         hist.columns = [c.lower() for c in hist.columns]
 
-        close = hist["close"]
-        high  = hist["high"]
-        low   = hist["low"]
+        if len(hist) < 50:
+            print("  Kite positional: insufficient data")
+            return None
+
+        print(f"  Kite positional: {len(hist)} daily candles fetched")
 
     except Exception as e:
-        print(f"  TrueData   : failed to fetch daily bars ({e})")
+        print(f"  Kite positional failed ({e})")
         return None
 
-    # ── RSI(14) on daily ──────────────────────────────────────────────────────
+    close = hist["close"]
+    high  = hist["high"]
+    low   = hist["low"]
+
+    # ── RSI(14) ──────────────────────────────────────────────────
     delta    = close.diff()
     avg_gain = delta.clip(lower=0).rolling(14).mean()
     avg_loss = (-delta.clip(upper=0)).rolling(14).mean()
     rsi      = 100 - (100 / (1 + avg_gain / avg_loss))
 
-    # ── EMA 20 / 50 / 200 ────────────────────────────────────────────────────
+    # ── EMA 20 / 50 / 200 ────────────────────────────────────────
     ema20  = close.ewm(span=20,  adjust=False).mean()
     ema50  = close.ewm(span=50,  adjust=False).mean()
     ema200 = close.ewm(span=200, adjust=False).mean()
 
     ema_cross = "none"
     for i in range(-3, 0):
-        if ema20.iloc[i-1] < ema50.iloc[i-1] and ema20.iloc[i] > ema50.iloc[i]:
+        if ema20.iloc[i-1] < ema50.iloc[i-1] and \
+           ema20.iloc[i] > ema50.iloc[i]:
             ema_cross = "bullish_crossover"
             break
-        elif ema20.iloc[i-1] > ema50.iloc[i-1] and ema20.iloc[i] < ema50.iloc[i]:
+        elif ema20.iloc[i-1] > ema50.iloc[i-1] and \
+             ema20.iloc[i] < ema50.iloc[i]:
             ema_cross = "bearish_crossover"
             break
 
-    # ── MACD (12, 26, 9) on daily ────────────────────────────────────────────
+    # ── MACD (12, 26, 9) ─────────────────────────────────────────
     macd_line   = close.ewm(span=12, adjust=False).mean() - \
                   close.ewm(span=26, adjust=False).mean()
     signal_line = macd_line.ewm(span=9, adjust=False).mean()
-    macd_signal = "bullish" if macd_line.iloc[-1] > signal_line.iloc[-1] else "bearish"
+    macd_signal = "bullish" if macd_line.iloc[-1] > signal_line.iloc[-1] \
+                  else "bearish"
 
     macd_cross = "none"
     if macd_line.iloc[-2] < signal_line.iloc[-2] and \
@@ -253,7 +161,7 @@ def fetch_positional_indicators() -> dict | None:
          macd_line.iloc[-1] < signal_line.iloc[-1]:
         macd_cross = "bearish_crossover"
 
-    # ── ADX — trend strength ──────────────────────────────────────────────────
+    # ── ADX ──────────────────────────────────────────────────────
     tr = pd.concat([
         high - low,
         (high - close.shift()).abs(),
@@ -262,18 +170,17 @@ def fetch_positional_indicators() -> dict | None:
 
     dm_plus  = high.diff().clip(lower=0)
     dm_minus = (-low.diff()).clip(lower=0)
-
     atr      = tr.rolling(14).mean()
     di_plus  = (dm_plus.rolling(14).mean()  / atr) * 100
     di_minus = (dm_minus.rolling(14).mean() / atr) * 100
-    dx       = ((di_plus - di_minus).abs() / (di_plus + di_minus)) * 100
+    dx       = ((di_plus - di_minus).abs() /
+                (di_plus + di_minus)) * 100
     adx      = dx.rolling(14).mean()
 
-    # ── 200 EMA trend filter ──────────────────────────────────────────────────
-    uptrend = close.iloc[-1] > ema200.iloc[-1]
+    # ── Uptrend filter ───────────────────────────────────────────
+    uptrend = close.iloc[-1] > ema200.iloc[-1] * 1.01
 
-    # ── Daily pivot levels (previous session) ─────────────────────────────────
-    # Use iloc[-2] — last completed MCX session
+    # ── Daily pivot levels (previous session) ────────────────────
     prev    = hist.iloc[-2]
     p_high  = prev["high"]
     p_low   = prev["low"]
@@ -287,7 +194,6 @@ def fetch_positional_indicators() -> dict | None:
     s2    = pivot - (p_high - p_low)
     s3    = p_low - 2 * (p_high - pivot)
 
-    # ── Build result — already INR per 10g, no conversion needed ─────────────
     def r(val):
         return round(val, -1)
 
@@ -378,119 +284,122 @@ def fetch_positional_indicators() -> dict | None:
 
 def fetch_technical_indicators() -> dict | None:
     """
-    Fetch 15min intraday candles from TrueData (MCX GOLD-I) and calculate:
-    RSI(14), EMA9/21, MACD, VWAP, intraday pivot levels.
-
-    No more USD→INR conversion needed — TrueData gives MCX prices directly in INR.
+    Fetch 15min intraday candles from Kite Connect for intraday signals.
     """
-    import pandas as pd
-
     try:
-        # ── Pull bar data from TrueData ───────────────────────────────────────
-        hist = td_hist.get_historic_data(
-            "GOLD-I",
-            bar_size="15min",
-            start_time=(pd.Timestamp.now() - pd.Timedelta(days=5))
+        kite      = KiteConnect(api_key=os.getenv("KITE_API_KEY"))
+        kite.set_access_token(os.getenv("KITE_ACCESS_TOKEN"))
+
+        from_date = (pd.Timestamp.now() - pd.Timedelta(days=5)).strftime("%Y-%m-%d %H:%M:%S")
+        to_date   = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        records = kite.historical_data(
+            instrument_token = 117574919,
+            from_date        = from_date,
+            to_date          = to_date,
+            interval         = "15minute"
         )
 
-        if hist is None or hist.empty or len(hist) < 26:
+        if not records:
+            print("  Kite intraday: no data returned")
             return None
 
-        # TrueData column names — adjust if your version differs
-        hist.columns = [c.lower() for c in hist.columns]  # normalise casing
+        hist = pd.DataFrame(records)
+        hist.columns = [c.lower() for c in hist.columns]
 
-        close = hist["close"]
-        high = hist["high"]
-        low = hist["low"]
-        volume = hist["volume"]
+        if len(hist) < 26:
+            return None
+
+        print(f"  Kite intraday: {len(hist)} 15min candles fetched")
 
     except Exception as e:
-        print(f"  TrueData   : failed to fetch bars ({e})")
+        print(f"  Kite intraday failed ({e})")
         return None
 
-    # ── RSI(14) ───────────────────────────────────────────────────────────────
-    delta = close.diff()
+    close  = hist["close"]
+    high   = hist["high"]
+    low    = hist["low"]
+    volume = hist["volume"]
+
+    # ── RSI(14) ──────────────────────────────────────────────────
+    delta    = close.diff()
     avg_gain = delta.clip(lower=0).rolling(14).mean()
     avg_loss = (-delta.clip(upper=0)).rolling(14).mean()
-    rsi = 100 - (100 / (1 + avg_gain / avg_loss))
+    rsi      = 100 - (100 / (1 + avg_gain / avg_loss))
 
-    # ── EMA 9 / 21 ────────────────────────────────────────────────────────────
-    ema9 = close.ewm(span=9, adjust=False).mean()
+    # ── EMA 9 / 21 ───────────────────────────────────────────────
+    ema9  = close.ewm(span=9,  adjust=False).mean()
     ema21 = close.ewm(span=21, adjust=False).mean()
 
     ema_cross = "none"
     for i in range(-3, 0):
-        if ema9.iloc[i - 1] < ema21.iloc[i - 1] and ema9.iloc[i] > ema21.iloc[i]:
+        if ema9.iloc[i-1] < ema21.iloc[i-1] and \
+           ema9.iloc[i] > ema21.iloc[i]:
             ema_cross = "bullish_crossover"
             break
-        elif ema9.iloc[i - 1] > ema21.iloc[i - 1] and ema9.iloc[i] < ema21.iloc[i]:
+        elif ema9.iloc[i-1] > ema21.iloc[i-1] and \
+             ema9.iloc[i] < ema21.iloc[i]:
             ema_cross = "bearish_crossover"
             break
 
-    # ── MACD (12, 26, 9) ──────────────────────────────────────────────────────
-    macd_line = close.ewm(span=12, adjust=False).mean() - \
-                close.ewm(span=26, adjust=False).mean()
+    # ── MACD ─────────────────────────────────────────────────────
+    macd_line   = close.ewm(span=12, adjust=False).mean() - \
+                  close.ewm(span=26, adjust=False).mean()
     signal_line = macd_line.ewm(span=9, adjust=False).mean()
-    macd_signal = "bullish" if macd_line.iloc[-1] > signal_line.iloc[-1] else "bearish"
+    macd_signal = "bullish" if macd_line.iloc[-1] > signal_line.iloc[-1] \
+                  else "bearish"
 
     macd_cross = "none"
     if macd_line.iloc[-2] < signal_line.iloc[-2] and \
-            macd_line.iloc[-1] > signal_line.iloc[-1]:
+       macd_line.iloc[-1] > signal_line.iloc[-1]:
         macd_cross = "bullish_crossover"
     elif macd_line.iloc[-2] > signal_line.iloc[-2] and \
-            macd_line.iloc[-1] < signal_line.iloc[-1]:
+         macd_line.iloc[-1] < signal_line.iloc[-1]:
         macd_cross = "bearish_crossover"
 
-    # ── VWAP (today's MCX session only) ───────────────────────────────────────
-    # MCX Gold session: 09:00 – 23:30 IST
-    today = pd.Timestamp.now(tz="Asia/Kolkata").date()
-    # today_mask = hist.
-    today_mask = hist.timestamp.dt.date == today
+    # ── VWAP (today's session only) ──────────────────────────────
+    hist["date"] = pd.to_datetime(hist["date"])
+    today_mask   = hist["date"].dt.date == pd.Timestamp.now().date()
 
     if today_mask.sum() < 3:
-        today_mask = hist.index.date == sorted(set(hist.index.date))[-1]
+        today_mask = hist["date"].dt.date == hist["date"].dt.date.iloc[-1]
 
-    today_hist = hist[today_mask]
-    typical_price = (today_hist["high"] + today_hist["low"] + today_hist["close"]) / 3
-    cumulative_tpv = (typical_price * today_hist["volume"]).cumsum()
-    cumulative_vol = today_hist["volume"].cumsum()
-    vwap_series = cumulative_tpv / cumulative_vol
-    current_vwap = vwap_series.iloc[-1]
+    today_hist    = hist[today_mask]
+    typical_price = (today_hist["high"] +
+                     today_hist["low"] +
+                     today_hist["close"]) / 3
+    vwap_series   = (typical_price * today_hist["volume"]).cumsum() / \
+                     today_hist["volume"].cumsum()
+    current_vwap  = vwap_series.iloc[-1]
 
-    # ── VWAP cross detection ──────────────────────────────────────────────────
-    vwap_cross = "none"
-    if len(today_hist) >= 2:
-        prev_close = today_hist["close"].iloc[-2]
-        curr_close = today_hist["close"].iloc[-1]
-        prev_vwap = vwap_series.iloc[-2]
-        curr_vwap = vwap_series.iloc[-1]
-
-        if prev_close < prev_vwap and curr_close > curr_vwap:
-            vwap_cross = "price_crossed_above_vwap"
-        elif prev_close > prev_vwap and curr_close < curr_vwap:
-            vwap_cross = "price_crossed_below_vwap"
-
-    curr_close = close.iloc[-1]
+    curr_close    = close.iloc[-1]
     price_vs_vwap = ((curr_close - current_vwap) / current_vwap) * 100
 
-    # ── Intraday pivot ────────────────────────────────────────────────────────
-    intraday_high = today_hist["high"].max()
-    intraday_low = today_hist["low"].min()
+    vwap_cross = "none"
+    if len(today_hist) >= 2:
+        if today_hist["close"].iloc[-2] < vwap_series.iloc[-2] and \
+           today_hist["close"].iloc[-1] > vwap_series.iloc[-1]:
+            vwap_cross = "price_crossed_above_vwap"
+        elif today_hist["close"].iloc[-2] > vwap_series.iloc[-2] and \
+             today_hist["close"].iloc[-1] < vwap_series.iloc[-1]:
+            vwap_cross = "price_crossed_below_vwap"
+
+    intraday_high  = today_hist["high"].max()
+    intraday_low   = today_hist["low"].min()
     intraday_pivot = (intraday_high + intraday_low + curr_close) / 3
 
-    # ── Build result — no conversion needed, already INR per 10g ─────────────
     indicators = {
-        "rsi": round(rsi.iloc[-1], 1),
-        "ema9": round(ema9.iloc[-1], -1),
-        "ema21": round(ema21.iloc[-1], -1),
-        "ema_cross": ema_cross,
-        "macd_signal": macd_signal,
-        "macd_cross": macd_cross,
-        "vwap": round(current_vwap, -1),
-        "vwap_cross": vwap_cross,
-        "price_vs_vwap": round(price_vs_vwap, 2),
-        "intraday_high": round(intraday_high, -1),
-        "intraday_low": round(intraday_low, -1),
+        "rsi"           : round(rsi.iloc[-1], 1),
+        "ema9"          : round(ema9.iloc[-1], -1),
+        "ema21"         : round(ema21.iloc[-1], -1),
+        "ema_cross"     : ema_cross,
+        "macd_signal"   : macd_signal,
+        "macd_cross"    : macd_cross,
+        "vwap"          : round(current_vwap, -1),
+        "vwap_cross"    : vwap_cross,
+        "price_vs_vwap" : round(price_vs_vwap, 2),
+        "intraday_high" : round(intraday_high, -1),
+        "intraday_low"  : round(intraday_low, -1),
         "intraday_pivot": round(intraday_pivot, -1),
     }
 
@@ -499,7 +408,8 @@ def fetch_technical_indicators() -> dict | None:
     print(f"  EMA cross  : {indicators['ema_cross']}")
     print(f"  MACD       : {indicators['macd_signal']} ({indicators['macd_cross']})")
     print(f"  VWAP       : ₹{indicators['vwap']:,.0f} "
-          f"(price is {indicators['price_vs_vwap']:+.2f}% from VWAP)")
+          f"({'bullish' if price_vs_vwap > 0 else 'bearish'} "
+          f"{price_vs_vwap:+.2f}%)")
     print(f"  VWAP cross : {indicators['vwap_cross']}")
     print(f"  ID High/Low: ₹{indicators['intraday_high']:,.0f} / "
           f"₹{indicators['intraday_low']:,.0f}")
