@@ -6,4 +6,4 @@ python-dotenv~=1.2.2
 pandas~=3.0.1
 gspread
 google-auth
-truedata
+kiteconnect
