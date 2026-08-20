@@ -1,0 +1,37 @@
+name: Kite Token Refresh
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_token:
+        description: "Kite request_token from today's login redirect URL"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install kiteconnect requests PyNaCl
+
+      - name: Exchange request_token and update secret
+        env:
+          KITE_API_KEY:       ${{ secrets.KITE_API_KEY }}
+          KITE_API_SECRET:    ${{ secrets.KITE_API_SECRET }}
+          KITE_REQUEST_TOKEN: ${{ github.event.inputs.request_token }}
+          GH_PAT:             ${{ secrets.GH_PAT }}
+          GH_REPO:            ${{ github.repository }}
+        run: python scripts/refresh_kite_token.py

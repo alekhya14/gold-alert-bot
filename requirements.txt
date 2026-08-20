@@ -7,3 +7,4 @@ pandas~=3.0.1
 gspread
 google-auth
 kiteconnect
+PyNaCl
