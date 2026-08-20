@@ -6,9 +6,16 @@ on:
     - cron: '30 0 * * 0'                                           # Sunday keyword update
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   run-alert:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: mcx-gold-alert-run
+      cancel-in-progress: false
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -28,8 +35,15 @@ jobs:
           key: bot-state
           restore-keys: bot-state
 
+      - name: Restore keywords cache
+        uses: actions/cache@v4
+        with:
+          path: keywords.json
+          key: keywords
+          restore-keys: keywords
+
       - name: Cache pip dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
@@ -54,24 +68,48 @@ jobs:
           KITE_API_KEY:         ${{secrets.KITE_API_KEY}}
           KITE_API_SECRET:      ${{secrets.KITE_API_SECRET}}
           KITE_ACCESS_TOKEN:    ${{secrets.KITE_ACCESS_TOKEN}}
-          
+
         run: python main.py
 
       - name: Save bot state cache
+        if: always()
         uses: actions/cache@v4
         with:
           path: bot_state.json
           key: bot-state
 
-      - name: Restore keywords cache
+      - name: Save keywords cache
+        if: always()
         uses: actions/cache@v4
         with:
           path: keywords.json
-          key: keywords-
-          restore-keys: keywords-
+          key: keywords
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GMAIL_USER:     ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
+          ALERT_EMAIL:    ${{ secrets.ALERT_EMAIL }}
+        run: |
+          python -c "
+          import smtplib, os
+          from email.mime.text import MIMEText
+          msg = MIMEText('MCX Gold Alert workflow run failed. Check the Actions log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}')
+          msg['Subject'] = 'MCX Gold Alert: workflow run FAILED'
+          msg['From'] = os.environ['GMAIL_USER']
+          msg['To'] = os.environ['ALERT_EMAIL']
+          with smtplib.SMTP_SSL('smtp.gmail.com', 465) as s:
+              s.login(os.environ['GMAIL_USER'], os.environ['GMAIL_APP_PASS'])
+              s.send_message(msg)
+          "
 
   update-keywords:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: mcx-gold-alert-keywords
+      cancel-in-progress: false
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -92,8 +130,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: keywords.json
-          key: keywords-${{ github.run_id }}
-          restore-keys: keywords-
+          key: keywords
+          restore-keys: keywords
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -104,7 +142,8 @@ jobs:
         run: python -c "from skills.keyword_updater import update_keywords; update_keywords()"
 
       - name: Save keywords cache
+        if: always()
         uses: actions/cache@v4
         with:
           path: keywords.json
-          key: keywords-${{ github.run_id }}
+          key: keywords
