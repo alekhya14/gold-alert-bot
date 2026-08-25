@@ -143,13 +143,21 @@ def run():
 
     # ── Skill 2a: Intraday analyst ────────────────────────────────
     print("\n[ Skill 2a — Intraday Analyst (15min + VWAP) ]")
-    intraday_data = build_price_data(gold_price, None, intraday)
-    intraday_tech = run_technical_analyst(intraday_data)
+    if intraday is None:
+        print("  Skipping — no intraday data from Kite")
+        intraday_tech = {"signal": "HOLD", "confidence": "LOW", "reason": "Kite intraday data unavailable"}
+    else:
+        intraday_data = build_price_data(gold_price, None, intraday)
+        intraday_tech = run_technical_analyst(intraday_data)
 
     # ── Skill 2b: Positional analyst ──────────────────────────────
     print("\n[ Skill 2b — Positional Analyst (daily) ]")
-    positional_data = build_positional_data(gold_price, positional)
-    positional_tech = run_positional_analyst(positional_data)
+    if positional is None:
+        print("  Skipping — no positional data from Kite")
+        positional_tech = {"signal": "HOLD", "confidence": "LOW", "reason": "Kite positional data unavailable"}
+    else:
+        positional_data = build_positional_data(gold_price, positional)
+        positional_tech = run_positional_analyst(positional_data)
 
     # ── Skill 3a: Compose intraday alert ──────────────────────────
     print("\n[ Skill 3a — Intraday Signal Composer ]")

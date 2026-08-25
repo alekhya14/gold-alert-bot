@@ -302,6 +302,10 @@ def run_news_classifier(headlines: str) -> dict:
 def run_technical_analyst(price_data: str) -> dict:
     print("  → calling Claude (technical analyst)...")
     raw  = call_claude(TECHNICAL_ANALYST_SYSTEM, f"Analyse MCX Gold:\n{price_data}")
+    print(f"  Raw tech JSON: {raw}")
+    if not raw:
+        print("  ✗ Empty response from Claude — returning HOLD")
+        return {"signal": "HOLD", "confidence": "LOW", "reason": "no indicator data available"}
     tech = json.loads(raw)
     print(f"  ✓ Signal    : {tech['signal']} | Confidence: {tech['confidence']}")
     return tech
@@ -310,6 +314,9 @@ def run_positional_analyst(price_data: str) -> dict:
     print("  → calling Claude (positional analyst)...")
     raw  = call_claude(POSITIONAL_ANALYST_SYSTEM,
                        f"Analyse MCX Gold for positional trade:\n{price_data}")
+    if not raw:
+        print("  ✗ Empty response from Claude — returning HOLD")
+        return {"signal": "HOLD", "confidence": "LOW", "reason": "no indicator data available"}
     tech = json.loads(raw)
     print(f"  ✓ Signal    : {tech['signal']} | Confidence: {tech['confidence']}")
     return tech
