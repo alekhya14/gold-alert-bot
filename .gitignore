@@ -7,5 +7,6 @@ venv/
 *.egg-info/
 test.py
 test_skills.py
+test2.py
 bot_state.json
 keywords.json
